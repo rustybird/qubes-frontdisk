@@ -1,0 +1,102 @@
+#!/bin/bash
+
+set -euo pipefail
+
+format='' device=${FB_DEVICE-} header=${FB_HEADER-} send_args=()
+
+for arg; do
+    case "$arg" in
+        --format)   format=overwrite ;;
+        --format=*) format=${arg#*=} ;;
+        --device=*) device=${arg#*=} ;;
+        --header=*) header=${arg#*=} ;;
+        *)          send_args+=( "$arg" ) ;;
+    esac
+done
+
+{ [[ $format =~ ^(overwrite|quick)?$ && $device && $header ]] &&
+if [[ $format ]]; then (( ! ${#send_args[@]} )); fi; } ||
+{ cat; exit 1; } <<END
+  Usage: frontbak [--device="\$FB_DEVICE"] \\
+                  [--header="\$FB_HEADER"] \\
+                  [--format  or  <argument for 'btrfs send'>...]
+
+         --format is the same as --format=overwrite
+         --format=quick is also available
+
+Example: # export FB_DEVICE=sys-usb:sda4 FB_HEADER=foo.img
+         # frontbak --format
+         # btrfs subvolume snapshot -r / /snap1
+         # frontbak /snap1
+         # btrfs subvolume snapshot -r / /snap2
+         # frontbak /snap2 -p /snap1
+END
+
+set -x
+
+echo Y >/sys/module/block/parameters/no_part_scan
+qvm-block attach -- dom0 "$device"
+
+device_vm=${device%%:*}
+device_id=${device#*:}
+blkfront=$(qubesd-query --empty --fail -- dom0 admin.vm.device.block.List \
+                        dom0 "$device_vm+$device_id" |
+           sed 's/ description=.*//' |
+           grep -aEo ' frontend-dev=xvd[a-z]+\b' |
+           cut -d = -f 2)
+
+if qvm-run --quiet -- "$device_vm" \
+           bash -c "lsblk -dnro ROTA /dev/${device_id@Q} | grep -qx 1"; then
+    # inherited by dm-crypt; Btrfs would add the ssd mount option if left at 0:
+    echo 1 >/sys/block/"$blkfront"/queue/rotational
+fi
+
+if [[ $format ]]; then
+    tmp=$header.tmp
+    head -c 17M /dev/random >"$tmp"
+    # last option is already the default in cryptsetup 2.4.0+:
+    ${FB_CRYPTSETUP_LUKSFORMAT-cryptsetup luksFormat -c xchacha20,aes-adiantum-plain64 --sector-size=4096 --pbkdf=argon2id} "$tmp"
+    truncate -s 16M "$tmp"
+    sync "$tmp"
+    dd if="$tmp" of=/dev/"$blkfront" \
+       bs=1M conv=nocreat,fdatasync iflag=fullblock
+    mv -T -- "$tmp" "$header"
+    sync .
+else
+    mkdir -p /run/frontbak/untrusted-header
+    untrusted_header=/run/frontbak/untrusted-header/$blkfront=$device.img
+    head -c 16M /dev/"$blkfront" >"$untrusted_header"
+    cmp -- "$header" "$untrusted_header"
+    shred --iterations=0 --zero --remove=unlink "$untrusted_header"
+fi
+
+uuid=$(cryptsetup luksUUID -- "$header")
+map=frontbak-$uuid
+${FB_CRYPTSETUP_OPEN-cryptsetup open} --header="$header" /dev/"$blkfront" "$map"
+
+if [[ $format == overwrite ]]; then
+    map_bytes=$(blockdev --getsize64 /dev/mapper/"$map")
+    dd if=/dev/zero of=/dev/mapper/"$map" count="$map_bytes" \
+       bs=1M conv=nocreat,fdatasync iflag=fullblock,count_bytes status=progress
+fi
+
+if [[ $format ]]; then
+    # last three options are already the defaults in btrfs-progs 5.15+:
+    ${FB_MKFS-mkfs.btrfs --csum=xxhash -m dup -O no-holes -R free-space-tree} /dev/mapper/"$map"
+else
+    mnt=/run/frontbak/mnt/$uuid
+    mkdir -p "$mnt"
+    ${FB_MOUNT-mount} /dev/mapper/"$map" "$mnt"
+fi
+
+if (( ${#send_args[@]} )); then
+    ${FB_SEND-btrfs send --proto=2} "${send_args[@]}" |
+    ${FB_RECEIVE-btrfs receive -v} "$mnt"
+    umount "$mnt"
+    rmdir "$mnt"
+fi
+
+if [[ $format ]] || (( ${#send_args[@]} )); then
+    cryptsetup close "$map"
+    qvm-block detach -- dom0 "$device"
+fi
