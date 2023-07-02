@@ -66,9 +66,9 @@ if [[ $format ]]; then
     tmp=$header.tmp
     head -c 17M /dev/random >"$tmp"
     # last option is already the default in cryptsetup 2.4.0+:
-    ${FB_CRYPTSETUP_LUKSFORMAT-cryptsetup luksFormat -c xchacha20,aes-adiantum-plain64 --sector-size=4096 --pbkdf=argon2id} "$tmp"
-    truncate -s 16M "$tmp"
-    sync "$tmp"
+    ${FB_CRYPTSETUP_LUKSFORMAT-cryptsetup luksFormat -c xchacha20,aes-adiantum-plain64 --sector-size=4096 --pbkdf=argon2id} -- "$tmp"
+    truncate -s 16M -- "$tmp"
+    sync -- "$tmp"
     dd if="$tmp" of=/dev/"$blkfront" \
        bs=1M conv=nocreat,fdatasync iflag=fullblock
     mv -T -- "$tmp" "$header"
