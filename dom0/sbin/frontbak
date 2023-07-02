@@ -45,7 +45,7 @@ blkfront=$(qubesd-query --empty --fail -- dom0 admin.vm.device.block.List \
            grep -aEo ' frontend-dev=xvd[a-z]+\b' |
            cut -d = -f 2)
 
-if qvm-run --quiet -- "$device_vm" \
+if qvm-run --pass-io --filter-escape-chars --quiet -- "$device_vm" \
            bash -c "lsblk -dnro ROTA /dev/${device_id@Q} | grep -qx 1"; then
     # inherited by dm-crypt; Btrfs would add the ssd mount option if left at 0:
     echo 1 >/sys/block/"$blkfront"/queue/rotational
