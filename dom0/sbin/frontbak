@@ -90,7 +90,12 @@ else
 fi
 
 if (( ${#send_args[@]} )); then
-    ${FB_SEND-btrfs send --proto=2} "${send_args[@]}" |
+    # --proto option is supported in btrfs-progs 5.19+:
+    LC_ALL=C btrfs send --help | grep -Eq -- '--proto\b' &&
+    proto_arg=--proto=0 ||
+    proto_arg=
+
+    ${FB_SEND-btrfs send $proto_arg} "${send_args[@]}" |
     ${FB_RECEIVE-btrfs receive -v} "$mnt"
     umount "$mnt"
     rmdir "$mnt"
