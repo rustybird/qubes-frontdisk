@@ -71,7 +71,7 @@ if [[ $format ]]; then
     sync -- "$tmp"
     dd if="$tmp" of=/dev/"$blkfront" \
        bs=1M conv=nocreat,fdatasync iflag=fullblock
-    mv -T -- "$tmp" "$header"
+    mv -iT -- "$tmp" "$header"
     sync .
 else
     mkdir -p /run/frontbak/untrusted-header
