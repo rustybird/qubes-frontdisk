@@ -102,7 +102,7 @@ else
 
     if ! mountpoint -q "$mnt"; then
         mkdir -p "$mnt"
-        ${FB_MOUNT-mount} /dev/mapper/"$map" "$mnt"
+        ${FB_MOUNT-mount} -t btrfs /dev/mapper/"$map" "$mnt"
     fi
 fi
 
