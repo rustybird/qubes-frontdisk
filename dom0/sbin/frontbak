@@ -72,7 +72,7 @@ if [[ $format ]]; then
     dd if="$tmp" of=/dev/"$blkfront" \
        bs=1M conv=nocreat,fdatasync iflag=fullblock
     mv -iT -- "$tmp" "$header"
-    sync .
+    dirname --zero -- "$header" | { IFS= read -r -d '' dir; sync -- "$dir"; }
 else
     mkdir -p /run/frontbak/untrusted-header
     untrusted_header=/run/frontbak/untrusted-header/$blkfront=$device.img
