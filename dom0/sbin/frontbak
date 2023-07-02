@@ -32,18 +32,24 @@ Example: # export FB_DEVICE=sys-usb:sda4 FB_HEADER=foo.img
          # frontbak /snap2 -p /snap1
 END
 
+
 set -x
 
-echo Y >/sys/module/block/parameters/no_part_scan
-qvm-block attach -- dom0 "$device"
+find_blkfront() {
+    qubesd-query -e --fail -- dom0 admin.vm.device.block.List dom0 "$1+$2" |
+    sed 's/ description=.*//' |
+    grep -aEo ' frontend-dev=xvd[a-z]+\b' |
+    cut -d = -f 2
+}
 
 device_vm=${device%%:*}
 device_id=${device#*:}
-blkfront=$(qubesd-query --empty --fail -- dom0 admin.vm.device.block.List \
-                        dom0 "$device_vm+$device_id" |
-           sed 's/ description=.*//' |
-           grep -aEo ' frontend-dev=xvd[a-z]+\b' |
-           cut -d = -f 2)
+
+if ! blkfront=$(find_blkfront "$device_vm" "$device_id"); then
+    echo Y >/sys/module/block/parameters/no_part_scan
+    qvm-block attach -- dom0 "$device"
+    blkfront=$(find_blkfront "$device_vm" "$device_id")
+fi
 
 if qvm-run --pass-io --filter-escape-chars --quiet -- "$device_vm" \
            bash -c "lsblk -dnro ROTA /dev/${device_id@Q} | grep -qx 1"; then
@@ -72,7 +78,10 @@ fi
 
 uuid=$(cryptsetup luksUUID -- "$header")
 map=frontbak-$uuid
-${FB_CRYPTSETUP_OPEN-cryptsetup open} --header="$header" /dev/"$blkfront" "$map"
+
+if [[ ! -e /dev/mapper/"$map" ]]; then
+    ${FB_CRYPTSETUP_OPEN-cryptsetup open} --header="$header" /dev/"$blkfront" "$map"
+fi
 
 if [[ $format == overwrite ]]; then
     map_bytes=$(blockdev --getsize64 /dev/mapper/"$map")
@@ -85,8 +94,11 @@ if [[ $format ]]; then
     ${FB_MKFS-mkfs.btrfs --csum=xxhash -m dup -O no-holes -R free-space-tree} /dev/mapper/"$map"
 else
     mnt=/run/frontbak/mnt/$uuid
-    mkdir -p "$mnt"
-    ${FB_MOUNT-mount} /dev/mapper/"$map" "$mnt"
+
+    if ! mountpoint -q "$mnt"; then
+        mkdir -p "$mnt"
+        ${FB_MOUNT-mount} /dev/mapper/"$map" "$mnt"
+    fi
 fi
 
 if (( ${#send_args[@]} )); then
