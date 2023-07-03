@@ -1,5 +1,5 @@
 #!/bin/bash
-
+# shellcheck disable=SC2086
 set -feuo pipefail
 
 usage() {
@@ -66,7 +66,8 @@ if [[ $format ]]; then
     tmp=$header.tmp
     head -c 17M /dev/random >"$tmp"
     # last option is already the default in cryptsetup 2.4.0+:
-    ${FB_CRYPTSETUP_LUKSFORMAT-cryptsetup luksFormat -c xchacha20,aes-adiantum-plain64 --sector-size=4096 --pbkdf=argon2id} -- "$tmp"
+    cryptsetup luksFormat -c xchacha20,aes-adiantum-plain64 --sector-size=4096 \
+               --pbkdf=argon2id ${FB_LUKSFORMAT_ARGS-} -- "$tmp"
     truncate -s 16M -- "$tmp"
     sync -- "$tmp"
     dd if="$tmp" of=/dev/"$blkfront" \
@@ -85,7 +86,8 @@ uuid=$(cryptsetup luksUUID -- "$header")
 map=frontbak-$uuid
 
 if [[ ! -e /dev/mapper/"$map" ]]; then
-    ${FB_CRYPTSETUP_OPEN-cryptsetup open} --header="$header" /dev/"$blkfront" "$map"
+    cryptsetup luksOpen --header="$header" ${FB_LUKSOPEN_ARGS-} \
+               /dev/"$blkfront" "$map"
 fi
 
 if [[ $format == overwrite ]]; then
@@ -96,13 +98,14 @@ fi
 
 if [[ $format ]]; then
     # last three options are already the defaults in btrfs-progs 5.15+:
-    ${FB_MKFS-mkfs.btrfs --csum=xxhash -m dup -O no-holes -R free-space-tree} /dev/mapper/"$map"
+    mkfs.btrfs --csum=xxhash -m dup -O no-holes -R free-space-tree \
+               ${FB_MKFS_ARGS-} /dev/mapper/"$map"
 else
     mnt=/run/frontbak/mnt/$uuid
 
     if ! mountpoint -q "$mnt"; then
         mkdir -p "$mnt"
-        ${FB_MOUNT-mount} -t btrfs /dev/mapper/"$map" "$mnt"
+        mount -t btrfs ${FB_MOUNT_ARGS-} /dev/mapper/"$map" "$mnt"
     fi
 fi
 
@@ -112,8 +115,8 @@ if (( ${#send_args[@]} )); then
     proto_arg=--proto=0 ||
     proto_arg=
 
-    ${FB_SEND-btrfs send $proto_arg} "${send_args[@]}" |
-    ${FB_RECEIVE-btrfs receive -v} "$mnt"
+    btrfs send $proto_arg "${send_args[@]}" |
+    btrfs receive -v ${FB_RECEIVE_ARGS-} "$mnt"
     umount "$mnt"
     rmdir "$mnt"
 fi
