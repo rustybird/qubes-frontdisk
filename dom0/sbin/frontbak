@@ -85,6 +85,8 @@ fi
 uuid=$(cryptsetup luksUUID -- "$header")
 map=frontbak-$uuid
 
+sha256sum -- "$header"
+
 if [[ ! -e /dev/mapper/"$map" ]]; then
     cryptsetup luksOpen --header="$header" ${FB_LUKSOPEN_ARGS-} \
                /dev/"$blkfront" "$map"
