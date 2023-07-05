@@ -76,7 +76,7 @@ if [[ $format ]]; then
     dirname --zero -- "$header" | { IFS= read -r -d '' dir; sync -- "$dir"; }
 else
     mkdir -p /run/frontbak/untrusted-header
-    untrusted_header=/run/frontbak/untrusted-header/$blkfront=$device.img
+    untrusted_header=/run/frontbak/untrusted-header/$device.img
     head -c 16M /dev/"$blkfront" >"$untrusted_header"
     cmp -- "$header" "$untrusted_header"
     shred --iterations=0 --zero --remove=unlink "$untrusted_header"
