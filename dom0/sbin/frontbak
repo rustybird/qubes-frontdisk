@@ -12,7 +12,7 @@ usage() {
           --format=quick  is also available
 
  Example: # export FB_DEVICE=sys-usb:sda4 FB_HEADER=foo.img
-          # frontbak --format
+          # FB_MKFS_ARGS='-O block-group-tree' frontbak --format
           # btrfs subvolume snapshot -r / /snap1
           # frontbak /snap1
           # btrfs subvolume snapshot -r / /snap2
