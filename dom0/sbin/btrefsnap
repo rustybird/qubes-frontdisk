@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+shopt -s nullglob
+
+reflink_pools=( /var/lib/qubes )
+
+[[ $# == 1 && $1 ]] || { echo "Usage: btrefsnap <snapshot>" >&2; exit 1; }
+snap=$1
+
+btrfs subvolume snapshot -- / "$snap"
+
+remove=()
+for pool in "${reflink_pools[@]}"; do
+    remove+=( "$snap$pool"/{appvms,vm-templates}/*/volatile-dirty.img )
+    remove+=( "$snap$pool"/{appvms,vm-templates}/*/*-precache.img )
+    remove+=( "$snap$pool"/{appvms,vm-templates}/*/*.img*~* )  # tempfiles
+    remove+=( "$snap$pool"/{appvms,vm-templates}/*/*.img.*@*Z )  # revisions
+done
+rm -fv -- "${remove[@]}"
+
+btrfs property set -- "$snap" ro true
