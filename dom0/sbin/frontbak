@@ -109,7 +109,7 @@ else
 fi
 
 if (( ${#send_args[@]} )); then
-    btrfs send --proto=0 "${send_args[@]}" |
+    btrfs send --proto=0 --compressed-data "${send_args[@]}" |
     btrfs receive -v ${FB_RECEIVE_ARGS-} "$mnt"
 
     umount "$mnt"
