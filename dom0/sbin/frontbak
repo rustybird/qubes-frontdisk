@@ -65,8 +65,8 @@ fi
 if [[ $format ]]; then
     tmp=$header.tmp
     head -c 17M /dev/random >"$tmp"
-    cryptsetup luksFormat -c xchacha20,aes-adiantum-plain64 --sector-size=4096 \
-               ${FB_LUKSFORMAT_ARGS-} -- "$tmp"
+    cryptsetup luksFormat --cipher=xchacha20,aes-adiantum-plain64 \
+                          --sector-size=4096 ${FB_LUKSFORMAT_ARGS-} -- "$tmp"
     truncate -s 16M -- "$tmp"
     sync -- "$tmp"
     dd if="$tmp" of=/dev/"$blkfront" \
@@ -88,7 +88,7 @@ sha256sum -- "$header"
 
 if [[ ! -e /dev/mapper/"$map" ]]; then
     cryptsetup luksOpen --header="$header" ${FB_LUKSOPEN_ARGS-} \
-               /dev/"$blkfront" "$map"
+                        /dev/"$blkfront" "$map"
 fi
 
 if [[ $format == overwrite ]]; then
