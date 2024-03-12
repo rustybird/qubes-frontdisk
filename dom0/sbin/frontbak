@@ -64,7 +64,8 @@ fi
 
 if [[ $format ]]; then
     tmp=$header.tmp
-    head -c 17M /dev/random >"$tmp"
+    rm -f -- "$tmp"
+    truncate -s 17M -- "$tmp"
     cryptsetup luksFormat --cipher=xchacha20,aes-adiantum-plain64 \
                           --sector-size=4096 ${FB_LUKSFORMAT_ARGS-} -- "$tmp"
     truncate -s 16M -- "$tmp"
