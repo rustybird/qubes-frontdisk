@@ -83,6 +83,7 @@ fi
 
 uuid=$(cryptsetup luksUUID -- "$header")
 map=frontbak-$uuid
+mnt=/run/frontbak/mnt-$uuid
 
 sha256sum -- "$header"
 
@@ -99,13 +100,9 @@ fi
 
 if [[ $format ]]; then
     mkfs.btrfs --checksum=xxhash ${FB_MKFS_ARGS-} /dev/mapper/"$map"
-else
-    mnt=/run/frontbak/mnt-$uuid
-
-    if ! mountpoint -q "$mnt"; then
-        mkdir -p "$mnt"
-        mount -t btrfs ${FB_MOUNT_ARGS-} /dev/mapper/"$map" "$mnt"
-    fi
+elif ! mountpoint -q "$mnt"; then
+    mkdir -p "$mnt"
+    mount -t btrfs ${FB_MOUNT_ARGS-} /dev/mapper/"$map" "$mnt"
 fi
 
 if (( ${#send_args[@]} )); then
