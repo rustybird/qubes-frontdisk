@@ -73,7 +73,7 @@ if [[ $format ]]; then
     dd if="$tmp" of=/dev/"$blkfront" \
        bs=1M conv=nocreat,fdatasync iflag=fullblock
     mv -iT -- "$tmp" "$header"
-    dirname --zero -- "$header" | { IFS= read -r -d '' dir; sync -- "$dir"; }
+    dirname -z -- "$header" | xargs -0 sync --
 else
     mkdir -p /run/frontbak/untrusted-header
     untrusted_header=/run/frontbak/untrusted-header/$device.img
@@ -87,7 +87,7 @@ map=frontbak-$uuid
 
 sha256sum -- "$header"
 
-if [[ ! -e /dev/mapper/"$map" ]]; then
+if [[ ! -e /dev/mapper/$map ]]; then
     cryptsetup luksOpen --header="$header" ${FB_LUKSOPEN_ARGS-} \
                         /dev/"$blkfront" "$map"
 fi
@@ -99,7 +99,7 @@ if [[ $format == overwrite ]]; then
 fi
 
 if [[ $format ]]; then
-    mkfs.btrfs --csum=xxhash ${FB_MKFS_ARGS-} /dev/mapper/"$map"
+    mkfs.btrfs --checksum=xxhash ${FB_MKFS_ARGS-} /dev/mapper/"$map"
 else
     mnt=/run/frontbak/mnt/$uuid
 
