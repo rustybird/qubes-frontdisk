@@ -25,12 +25,10 @@ format='' device=${FB_DEVICE-} header=${FB_HEADER-} send_args=()
 
 for arg; do
     case "$arg" in
-        --help|-h)  usage 0 ;;
-        --format)   format=overwrite ;;
-        --format=*) format=${arg#*=} ;;
-        --device=*) device=${arg#*=} ;;
-        --header=*) header=${arg#*=} ;;
-        *)          send_args+=( "$arg" ) ;;
+        --help|-h) usage 0 ;;
+        --format) format=overwrite ;;
+        --format=*|--device=*|--header=*) declare -- "${arg#--}" ;;
+        *) send_args+=( "$arg" ) ;;
     esac
 done
 
