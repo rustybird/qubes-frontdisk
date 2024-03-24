@@ -79,7 +79,7 @@ else
     untrusted_header=/run/frontbak/untrusted-header/$device.img
     head -c 16M /dev/"$blkfront" >"$untrusted_header"
     cmp -- "$header" "$untrusted_header"
-    shred --iterations=0 --zero --remove=unlink "$untrusted_header"
+    rm "$untrusted_header"
 fi
 
 uuid=$(cryptsetup luksUUID -- "$header")
