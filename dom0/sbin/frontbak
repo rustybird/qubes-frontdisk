@@ -74,6 +74,7 @@ if [[ $format ]]; then
     dirname -z -- "$header" | xargs -0 sync --
 else
     untrusted_header=/run/frontbak/untrusted-header-$device.img
+    mkdir -p "${untrusted_header%/*}"
     head -c 16M /dev/"$blkfront" >"$untrusted_header"
     cmp -- "$header" "$untrusted_header"
     rm "$untrusted_header"
