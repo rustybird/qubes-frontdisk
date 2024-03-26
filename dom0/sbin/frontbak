@@ -113,6 +113,6 @@ if (( ${#send_args[@]} )); then
 fi
 
 if [[ $format ]] || (( ${#send_args[@]} )); then
-    cryptsetup close "$map"
+    cryptsetup close --header="$header" "$map"
     qvm-block detach -- dom0 "$device"
 fi
