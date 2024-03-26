@@ -1,0 +1,131 @@
+#!/bin/bash
+# shellcheck disable=SC2086,SC2128
+set -feuo pipefail
+
+trap "echo \"
+ Usage: frontdisk --device=<vm>:<devname> --header=<file>
+                  format [--skip-wipe]
+                  open
+                  close
+                  backup [--skip-close] <argument for 'btrfs send'>...
+
+
+ Optional environment variables:
+
+ FD_DEVICE FD_HEADER FD_BASEDIR FD_MAP FD_MNT FD_RECEIVE_SUBDIR
+ FD_RECEIVE_ARGS FD_MOUNT_ARGS FD_MKFS_ARGS FD_LUKSOPEN_ARGS FD_LUKSFORMAT_ARGS
+\"" EXIT
+
+device=${FD_DEVICE-} header=${FD_HEADER-} skip_wipe='' skip_close='' cmd=()
+
+for arg; do
+    case "$arg" in
+        --help|-h) exit 0 ;;
+        --skip-wipe) skip_wipe=x ;;
+        --skip-close) skip_close=x ;;
+        --device=*|--header=*) declare -- "${arg#--}" ;;
+        *) cmd+=( "$arg" ) ;;
+    esac
+done
+
+case "${cmd-}" in
+    format|open|close) (( ${#cmd[@]} == 1 )) ;;
+    backup) (( ${#cmd[@]} > 1 )) ;;
+    *) exit 1 ;;
+esac
+
+[[ $device == ?*:?* && $header == ?* ]]
+
+trap - EXIT
+
+
+basedir=${FD_BASEDIR-/run/frontdisk} did_attach='' did_map=''
+
+if [[ $cmd != close ]]; then
+    find_blkfront() {
+        qubesd-query -e --fail -- dom0 admin.vm.device.block.List dom0 "$1+$2" |
+        sed 's/ description=.*//' |
+        grep -aEo ' frontend-dev=xvd[a-z]+\b' |
+        cut -d = -f 2
+    }
+
+    device_vm=${device%%:*}
+    device_id=${device#*:}
+
+    if ! blkfront=$(find_blkfront "$device_vm" "$device_id"); then
+        echo Y >/sys/module/block/parameters/no_part_scan
+        qvm-block attach -- dom0 "$device"
+        blkfront=$(find_blkfront "$device_vm" "$device_id")
+        did_attach=x
+    fi
+
+    if qvm-run </dev/null --pass-io --filter-escape-chars -q -- "$device_vm" \
+               bash -c "lsblk -dnro ROTA /dev/${device_id@Q} | grep -qx 1"; then
+        # inherited by dm-crypt; Btrfs adds 'ssd' mount option if left at 0:
+        echo 1 >/sys/block/"$blkfront"/queue/rotational
+    fi
+fi
+
+if [[ $cmd == format ]]; then
+    tmp=$header.tmp
+    rm -f -- "$tmp"
+    truncate -s 17M -- "$tmp"
+    cryptsetup luksFormat --cipher=xchacha20,aes-adiantum-plain64 \
+                          --sector-size=4096 ${FD_LUKSFORMAT_ARGS-} -- "$tmp"
+    truncate -s 16M -- "$tmp"
+    sync -- "$tmp"
+    dd if="$tmp" of=/dev/"$blkfront" iflag=fullblock bs=1M \
+       conv=fdatasync,nocreat
+    mv -Tv --backup=numbered -- "$tmp" "$header"
+    dirname -z -- "$header" | xargs -0 sync --
+elif [[ $cmd != close ]]; then
+    untrusted_header=$basedir/untrusted-header-$device.img
+    mkdir -p -- "$basedir"
+    head -c 16M /dev/"$blkfront" >"$untrusted_header"
+    cmp -- "$header" "$untrusted_header"
+    rm -- "$untrusted_header"
+fi
+
+uuid=$(cryptsetup luksUUID -- "$header")
+map=${FD_MAP-frontdisk-$uuid}
+mnt=${FD_MNT-$basedir/mnt-$uuid}
+
+if [[ $cmd != close ]] && [[ $did_attach || ! -e /dev/mapper/$map ]]; then
+    sha256sum --tag -- "$header"
+    cryptsetup luksOpen --header="$header" ${FD_LUKSOPEN_ARGS-} \
+                        -- /dev/"$blkfront" "$map"
+    did_map=x
+fi
+
+if [[ $cmd == format ]]; then
+    if [[ ! $skip_wipe ]]; then
+        map_bytes=$(blockdev --getsize64 /dev/mapper/"$map")
+        echo "Wiping $map_bytes bytes..."
+        dd if=/dev/zero of=/dev/mapper/"$map" iflag=fullblock bs=1M \
+           conv=fdatasync,nocreat count="$map_bytes"B status=progress
+    fi
+
+    mkfs.btrfs --checksum=xxhash ${FD_MKFS_ARGS-} /dev/mapper/"$map"
+elif [[ $cmd != close ]]; then
+    if mountpoint -q -- "$mnt"; then
+        [[ $cmd != open && ! $did_map ]] || { echo 'Already mounted!'; exit 1; }
+    else
+        [[ $mnt != "$basedir"/* ]] || mkdir -p -- "$mnt"
+        mount -v -t btrfs ${FD_MOUNT_ARGS-} -- /dev/mapper/"$map" "$mnt"
+    fi
+fi
+
+if [[ $cmd == backup ]]; then
+    dst=$mnt/${FD_RECEIVE_SUBDIR-}
+    mkdir -pv -- "$dst"
+    btrfs send --proto=0 --compressed-data "${cmd[@]:1}" |
+    btrfs receive -v ${FD_RECEIVE_ARGS-} -- "$dst"
+fi
+
+if [[ $cmd != open && ! $skip_close ]]; then
+    { ! mountpoint -q -- "$mnt"; } || umount -v -- "$mnt"
+    [[ $mnt != "$basedir"/* || ! -d $mnt ]] || rmdir -- "$mnt"
+    [[ ! -e /dev/mapper/$map ]] || cryptsetup close --header="$header" -- "$map"
+    qvm-block detach -- dom0 "$device"
+    echo 'Detached.'
+fi
