@@ -34,6 +34,8 @@ case "${cmd-}" in
     *) exit 1 ;;
 esac
 
+[[ $cmd == format || ! $skip_wipe ]]
+[[ $cmd == backup || ! $skip_close ]]
 [[ $device == ?*:?* && $header == ?* ]]
 
 trap - EXIT
