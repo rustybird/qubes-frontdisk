@@ -68,22 +68,22 @@ if [[ $cmd != close ]]; then
     fi
 fi
 
+header_bytes=$(( 16 * 1024**2 ))
+
 if [[ $cmd == format ]]; then
-    tmp=$header.tmp
-    rm -f -- "$tmp"
-    truncate -s 17M -- "$tmp"
-    cryptsetup luksFormat --cipher=xchacha20,aes-adiantum-plain64 \
-                          --sector-size=4096 ${FD_LUKSFORMAT_ARGS-} -- "$tmp"
-    truncate -s 16M -- "$tmp"
-    sync -- "$tmp"
-    dd if="$tmp" of=/dev/"$blkfront" iflag=fullblock bs=1M \
-       conv=fdatasync,nocreat
-    mv -Tv --backup=numbered -- "$tmp" "$header"
+    cryptsetup luksFormat --header="$header" \
+                          --offset=$(( header_bytes / 512 )) \
+                          --sector-size=4096 \
+                          --cipher=xchacha20,aes-adiantum-plain64 \
+                          ${FD_LUKSFORMAT_ARGS-} -- /dev/"$blkfront"
+    stat -c %s -- "$header" | grep -qxF -- "$header_bytes"
     dirname -z -- "$header" | xargs -0 sync --
+    dd if="$header" of=/dev/"$blkfront" iflag=fullblock bs=1M \
+       conv=fdatasync,nocreat
 elif [[ $cmd != close ]]; then
     untrusted_header=$basedir/untrusted-header-$device.img
     mkdir -p -- "$basedir"
-    head -c 16M /dev/"$blkfront" >"$untrusted_header"
+    head -c "$header_bytes" /dev/"$blkfront" >"$untrusted_header"
     cmp -- "$header" "$untrusted_header"
     rm -- "$untrusted_header"
 fi
@@ -94,8 +94,8 @@ mnt=${FD_MNT-$basedir/mnt-$uuid}
 
 if [[ $cmd != close ]] && [[ $did_attach || ! -e /dev/mapper/$map ]]; then
     sha256sum --tag -- "$header"
-    cryptsetup luksOpen --header="$header" ${FD_LUKSOPEN_ARGS-} \
-                        -- /dev/"$blkfront" "$map"
+    cryptsetup luksOpen --header="$header" \
+                        ${FD_LUKSOPEN_ARGS-} -- /dev/"$blkfront" "$map"
     did_map=x
 fi
 
