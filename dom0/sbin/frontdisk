@@ -90,13 +90,11 @@ mnt=${FD_MNT-$basedir/mnt-$uuid}
 
 if [[ $cmd != close ]] &&
    [[ $work_checkpoint == attached || ! -e /dev/mapper/$map ]]; then
-    if [[ $cmd != format ]]; then
-        untrusted_header=$basedir/untrusted-header-$device.img
-        mkdir -p -- "$basedir"
-        head -c "$header_bytes" /dev/"$blkfront" >"$untrusted_header"
-        cmp -- "$header" "$untrusted_header"
-        rm -- "$untrusted_header"
-    fi
+    untrusted_header=$basedir/untrusted-header-$device.img
+    mkdir -p -- "$basedir"
+    head -c "$header_bytes" /dev/"$blkfront" >"$untrusted_header"
+    cmp -- "$header" "$untrusted_header"
+    rm -- "$untrusted_header"
 
     sha256sum --tag -- "$header"
     cryptsetup luksOpen --header="$header" \
