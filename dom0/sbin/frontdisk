@@ -21,9 +21,8 @@ device=${FD_DEVICE-} header=${FD_HEADER-} skip_wipe='' skip_close='' cmd=()
 for arg; do
     case "$arg" in
         --help|-h) exit 0 ;;
-        --skip-wipe) skip_wipe=x ;;
-        --skip-close) skip_close=x ;;
-        --device=*|--header=*) declare -- "${arg#--}" ;;
+        --skip-wipe|--skip-close) declare skip_"${arg##*-}"=x ;;
+        --device=*|--header=*) declare "${arg#--}" ;;
         *) cmd+=( "$arg" ) ;;
     esac
 done
@@ -43,13 +42,14 @@ trap - EXIT
 
 message() { echo "frontdisk: $1" >&2; }
 
-basedir=${FD_BASEDIR-/run/frontdisk} did_attach='' did_map=''
+basedir=${FD_BASEDIR-/run/frontdisk}
+work_checkpoint=''
 
 if [[ $cmd != close ]]; then
     find_blkfront() {
         qubesd-query -e --fail -- dom0 admin.vm.device.block.List dom0 "$1+$2" |
         sed 's/ description=.*//' |
-        grep -aEo ' frontend-dev=xvd[a-z]+\b' |
+        grep -aoE ' frontend-dev=xvd[a-z]+\b' |
         cut -d = -f 2
     }
 
@@ -60,7 +60,7 @@ if [[ $cmd != close ]]; then
         echo Y >/sys/module/block/parameters/no_part_scan
         qvm-block attach -- dom0 "$device"
         blkfront=$(find_blkfront "$device_vm" "$device_id")
-        did_attach=x
+        work_checkpoint=attached
     fi
 
     if qvm-run </dev/null --pass-io --filter-escape-chars -q -- "$device_vm" \
@@ -95,11 +95,12 @@ uuid=$(cryptsetup luksUUID -- "$header")
 map=${FD_MAP-frontdisk-$uuid}
 mnt=${FD_MNT-$basedir/mnt-$uuid}
 
-if [[ $cmd != close ]] && [[ $did_attach || ! -e /dev/mapper/$map ]]; then
+if [[ $cmd != close ]] &&
+   [[ $work_checkpoint == attached || ! -e /dev/mapper/$map ]]; then
     sha256sum --tag -- "$header"
     cryptsetup luksOpen --header="$header" \
                         ${FD_LUKSOPEN_ARGS-} -- /dev/"$blkfront" "$map"
-    did_map=x
+    work_checkpoint=mapped
 fi
 
 if [[ $cmd == format ]]; then
@@ -113,7 +114,7 @@ if [[ $cmd == format ]]; then
     mkfs.btrfs --checksum=xxhash ${FD_MKFS_ARGS-} /dev/mapper/"$map"
 elif [[ $cmd != close ]]; then
     if mountpoint -q -- "$mnt"; then
-        [[ $cmd != open && ! $did_map ]] ||
+        [[ $cmd != open && $work_checkpoint != mapped ]] ||
         { message 'Already mounted!'; exit 1; }
     else
         [[ $mnt != "$basedir"/* ]] || mkdir -p -- "$mnt"
