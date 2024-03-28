@@ -43,6 +43,7 @@ trap - EXIT
 message() { echo "frontdisk: $1" >&2; }
 
 basedir=${FD_BASEDIR-/run/frontdisk}
+header_bytes=$(( 16 * 1024**2 ))
 work_checkpoint=''
 
 if [[ $cmd != close ]]; then
@@ -70,8 +71,6 @@ if [[ $cmd != close ]]; then
     fi
 fi
 
-header_bytes=$(( 16 * 1024**2 ))
-
 if [[ $cmd == format ]]; then
     cryptsetup luksFormat --header="$header" \
                           --offset=$(( header_bytes / 512 )) \
@@ -83,12 +82,6 @@ if [[ $cmd == format ]]; then
     { message 'Unexpected header size!'; exit 1; }
     dd if="$header" of=/dev/"$blkfront" iflag=fullblock bs=1M \
        conv=fdatasync,nocreat
-elif [[ $cmd != close ]]; then
-    untrusted_header=$basedir/untrusted-header-$device.img
-    mkdir -p -- "$basedir"
-    head -c "$header_bytes" /dev/"$blkfront" >"$untrusted_header"
-    cmp -- "$header" "$untrusted_header"
-    rm -- "$untrusted_header"
 fi
 
 uuid=$(cryptsetup luksUUID -- "$header")
@@ -97,6 +90,14 @@ mnt=${FD_MNT-$basedir/mnt-$uuid}
 
 if [[ $cmd != close ]] &&
    [[ $work_checkpoint == attached || ! -e /dev/mapper/$map ]]; then
+    if [[ $cmd != format ]]; then
+        untrusted_header=$basedir/untrusted-header-$device.img
+        mkdir -p -- "$basedir"
+        head -c "$header_bytes" /dev/"$blkfront" >"$untrusted_header"
+        cmp -- "$header" "$untrusted_header"
+        rm -- "$untrusted_header"
+    fi
+
     sha256sum --tag -- "$header"
     cryptsetup luksOpen --header="$header" \
                         ${FD_LUKSOPEN_ARGS-} -- /dev/"$blkfront" "$map"
