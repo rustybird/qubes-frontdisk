@@ -80,6 +80,8 @@ if [[ $cmd == format ]]; then
     dirname -z -- "$header" | xargs -0 sync --
     stat -c %s -- "$header" | grep -qxF -- "$header_bytes" ||
     { message 'Unexpected header size!'; exit 1; }
+
+    # prep for detached header loss: also store a copy on the device
     dd if="$header" of=/dev/"$blkfront" iflag=fullblock bs=1M \
        conv=fdatasync,nocreat
 fi
@@ -90,13 +92,16 @@ mnt=${FD_MNT-$basedir/mnt-$uuid}
 
 if [[ $cmd != close ]] &&
    [[ $work_checkpoint == attached || ! -e /dev/mapper/$map ]]; then
+    # prep for detached header loss: make emergency recovery undetectable
     untrusted_header=$basedir/untrusted-header-$device.img
     mkdir -p -- "$basedir"
     head -c "$header_bytes" /dev/"$blkfront" >"$untrusted_header"
     cmp -- "$header" "$untrusted_header"
     rm -- "$untrusted_header"
 
+    # prep for detached header loss: something to remember, maybe
     sha256sum --tag -- "$header"
+
     cryptsetup luksOpen --header="$header" \
                         ${FD_LUKSOPEN_ARGS-} -- /dev/"$blkfront" "$map"
     work_checkpoint=mapped
