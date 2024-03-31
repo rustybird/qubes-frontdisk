@@ -82,8 +82,8 @@ if [[ $cmd == format ]]; then
     { message 'Unexpected header size!'; exit 1; }
 
     # prep for detached header loss: also store a copy on the device
-    dd if="$header" of=/dev/"$blkfront" iflag=fullblock bs=1M \
-       conv=fdatasync,nocreat
+    dd if="$header" of=/dev/"$blkfront" iflag=fullblock oflag=direct \
+       bs=1M conv=fdatasync,nocreat
 elif [[ $cmd != close ]]; then
     # prep for detached header loss: make emergency recovery undetectable
     untrusted_header=$basedir/untrusted-header-$device.img
@@ -111,8 +111,8 @@ if [[ $cmd == format ]]; then
     if [[ ! $skip_wipe ]]; then
         map_bytes=$(blockdev --getsize64 /dev/mapper/"$map")
         message "Wiping $map_bytes bytes..."
-        dd if=/dev/zero of=/dev/mapper/"$map" iflag=fullblock bs=1M \
-           conv=fdatasync,nocreat count="$map_bytes"B status=progress
+        dd if=/dev/zero of=/dev/mapper/"$map" iflag=fullblock oflag=direct \
+           bs=1M conv=fdatasync,nocreat count="$map_bytes"B status=progress
     fi
 
     mkfs.btrfs --checksum=xxhash ${FD_MKFS_ARGS-} /dev/mapper/"$map"
