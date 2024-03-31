@@ -21,8 +21,8 @@ device=${FD_DEVICE-} header=${FD_HEADER-} skip_wipe='' skip_close='' cmd=()
 for arg; do
     case "$arg" in
         --help|-h) exit 0 ;;
-        --skip-wipe|--skip-close) declare skip_"${arg##*-}"=x ;;
         --device=*|--header=*) declare "${arg#--}" ;;
+        --skip-wipe|--skip-close) declare skip_"${arg##*-}"=x ;;
         *) cmd+=( "$arg" ) ;;
     esac
 done
