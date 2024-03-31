@@ -130,7 +130,7 @@ if [[ $cmd == backup ]]; then
     dst=$mnt/${FD_RECEIVE_SUBDIR-}
     mkdir -pv -- "$dst"
     btrfs send --proto=0 --compressed-data "${cmd[@]:1}" |
-    btrfs receive -v ${FD_RECEIVE_ARGS-} -- "$dst"
+    btrfs receive ${FD_RECEIVE_ARGS-} -- "$dst"
 fi
 
 if [[ $cmd != open && ! $skip_close ]]; then
