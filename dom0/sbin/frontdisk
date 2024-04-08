@@ -65,6 +65,7 @@ if [[ $cmd != close ]]; then
     device_id=${device#*:}
 
     if ! blkfront=$(find_blkfront "$device_vm" "$device_id"); then
+        echo N >/sys/module/xen_blkfront/parameters/trusted
         echo Y >/sys/module/block/parameters/no_part_scan
         qvm-block attach -- dom0 "$device"
         blkfront=$(find_blkfront "$device_vm" "$device_id")
