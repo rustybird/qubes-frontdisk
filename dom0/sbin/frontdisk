@@ -4,8 +4,8 @@ set -feuo pipefail
 
 trap "echo \"
  Usage: frontdisk --device=<vm>:<devname> --header=<file>
-                  format [--skip-wipe]
-                  open
+                  format [--skip-fs] [--skip-wipe]
+                  open   [--skip-fs]
                   close
                   backup [--skip-close] <argument for 'btrfs send'>...
 
@@ -19,6 +19,7 @@ trap "echo \"
 device=${FD_DEVICE-}
 header=${FD_HEADER-}
 integrity=hmac-sha256
+skip_fs=''
 skip_close=''
 skip_wipe=''
 cmd=()
@@ -27,7 +28,7 @@ for arg; do
     case "$arg" in
         --help|-h) exit 0 ;;
         --device=*|--header=*|--integrity=*) declare "${arg#--}" ;;
-        --skip-wipe|--skip-close) declare skip_"${arg##*-}"=x ;;
+        --skip-fs|--skip-wipe|--skip-close) declare skip_"${arg##*-}"=x ;;
         *) cmd+=( "$arg" ) ;;
     esac
 done
@@ -38,6 +39,7 @@ case "${cmd-}" in
     *) exit 1 ;;
 esac
 
+[[ $cmd == format || $cmd == open || ! $skip_fs ]]
 [[ $cmd == format || ! $skip_wipe ]]
 [[ $cmd == backup || ! $skip_close ]]
 [[ $device == ?*:?* && $header == ?* ]]
@@ -124,8 +126,9 @@ if [[ $cmd == format ]]; then
     # --force is needed for --integrity-no-wipe, where dm-integrity refusing
     # reads from uninitialized sectors makes mkfs.btrfs unable to check that
     # there's no existing filesystem.
+    [[ $skip_fs ]] ||
     mkfs.btrfs --force --checksum=xxhash ${FD_MKFS_ARGS-} /dev/mapper/"$map"
-elif [[ $cmd != close ]]; then
+elif [[ $cmd != close && ! $skip_fs ]]; then
     if mountpoint -q -- "$mnt"; then
         [[ $cmd != open && $work_checkpoint != mapped ]] ||
         { message 'Already mounted!'; exit 1; }
