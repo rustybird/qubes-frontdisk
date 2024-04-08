@@ -16,12 +16,17 @@ trap "echo \"
  FD_RECEIVE_ARGS FD_MOUNT_ARGS FD_MKFS_ARGS FD_LUKSOPEN_ARGS FD_LUKSFORMAT_ARGS
 \"" EXIT
 
-device=${FD_DEVICE-} header=${FD_HEADER-} skip_wipe='' skip_close='' cmd=()
+device=${FD_DEVICE-}
+header=${FD_HEADER-}
+integrity=hmac-sha256
+skip_close=''
+skip_wipe=''
+cmd=()
 
 for arg; do
     case "$arg" in
         --help|-h) exit 0 ;;
-        --device=*|--header=*) declare "${arg#--}" ;;
+        --device=*|--header=*|--integrity=*) declare "${arg#--}" ;;
         --skip-wipe|--skip-close) declare skip_"${arg##*-}"=x ;;
         *) cmd+=( "$arg" ) ;;
     esac
@@ -75,7 +80,8 @@ if [[ $cmd == format ]]; then
     cryptsetup luksFormat --header="$header" \
                           --offset=$(( header_bytes / 512 )) \
                           --sector-size=4096 \
-                          --cipher=xchacha20,aes-adiantum-plain64 \
+                          ${integrity:+--integrity="$integrity"} \
+                          ${integrity:+${skip_wipe:+--integrity-no-wipe}} \
                           ${FD_LUKSFORMAT_ARGS-} -- /dev/"$blkfront"
     dirname -z -- "$header" | xargs -0 sync --
     stat -c %s -- "$header" | grep -qxF -- "$header_bytes" ||
@@ -108,14 +114,17 @@ if [[ $cmd != close ]] &&
 fi
 
 if [[ $cmd == format ]]; then
-    if [[ ! $skip_wipe ]]; then
+    if [[ ! $skip_wipe && ! $integrity ]]; then
         map_bytes=$(blockdev --getsize64 /dev/mapper/"$map")
         message "Wiping $map_bytes bytes..."
         dd if=/dev/zero of=/dev/mapper/"$map" iflag=fullblock oflag=direct \
            bs=1M conv=fdatasync,nocreat count="$map_bytes"B status=progress
     fi
 
-    mkfs.btrfs --checksum=xxhash ${FD_MKFS_ARGS-} /dev/mapper/"$map"
+    # --force is needed for --integrity-no-wipe, where dm-integrity refusing
+    # reads from uninitialized sectors makes mkfs.btrfs unable to check that
+    # there's no existing filesystem.
+    mkfs.btrfs --force --checksum=xxhash ${FD_MKFS_ARGS-} /dev/mapper/"$map"
 elif [[ $cmd != close ]]; then
     if mountpoint -q -- "$mnt"; then
         [[ $cmd != open && $work_checkpoint != mapped ]] ||
