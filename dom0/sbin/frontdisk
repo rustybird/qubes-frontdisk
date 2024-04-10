@@ -19,9 +19,9 @@ trap "echo \"
 device=${FD_DEVICE-}
 header=${FD_HEADER-}
 integrity=hmac-sha256
-skip_fs=''
-skip_close=''
-skip_wipe=''
+skip_fs=
+skip_close=
+skip_wipe=
 cmd=()
 
 for arg; do
@@ -51,7 +51,7 @@ message() { echo "frontdisk: $1" >&2; }
 
 basedir=${FD_BASEDIR-/run/frontdisk}
 header_bytes=$(( 16 * 1024**2 ))
-work_checkpoint=''
+work_checkpoint=
 
 if [[ $cmd != close ]]; then
     find_blkfront() {
