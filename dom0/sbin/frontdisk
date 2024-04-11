@@ -42,7 +42,7 @@ esac
 [[ $cmd == format || $cmd == open || ! $skip_fs ]]
 [[ $cmd == format || ! $skip_wipe ]]
 [[ $cmd == backup || ! $skip_close ]]
-[[ $device == ?*:?* && $header == ?* ]]
+[[ $device == ?*:?* && $header ]]
 
 trap - EXIT
 
